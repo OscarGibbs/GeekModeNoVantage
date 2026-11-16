@@ -14,7 +14,9 @@ A small, local-only Windows tray utility created specifically for the Lenovo Ide
 - Reads and controls Lenovo's confirmed SmartSense settings independently:
   - Zero Touch Login
   - Zero Touch Lock
-- Shows Zero Touch Video Playback as unavailable until its true state mapping is decoded; the `Video` registry value is a capability flag, not the user toggle.
+  - Zero Touch Video Playback
+  - Automatic or Near (0.42 m), Middle (0.6 m), and Far (1.2 m) distance sensitivity
+  - Fast, Medium, and Slow automatic-lock delay
 - Shows whether the ToF/SmartSense stack is online.
 - Shows a compact count of running Lenovo services.
 - Uses no network access, analytics, advertising, account, or subscriptions.

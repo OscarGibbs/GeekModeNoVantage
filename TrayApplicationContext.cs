@@ -59,7 +59,20 @@ internal sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add(new ToolStripSeparator());
         AddZeroTouch("Zero Touch Login", ZeroTouchFeature.Login, zero.Login);
         AddZeroTouch("Zero Touch Lock", ZeroTouchFeature.Lock, zero.Lock);
-        menu.Items.Add(new ToolStripMenuItem("Zero Touch Video Playback: mapping pending") { Enabled = false });
+        AddZeroTouch("Zero Touch Video Playback", ZeroTouchFeature.VideoPlayback, zero.VideoPlayback);
+
+        var distance = new ToolStripMenuItem($"Distance sensitivity: {DistanceName(zero.Distance)}");
+        AddDistance(distance, "Automatic", DistanceSensitivity.Automatic, zero.Distance);
+        AddDistance(distance, "Near (0.42 m)", DistanceSensitivity.Near, zero.Distance);
+        AddDistance(distance, "Middle (0.6 m)", DistanceSensitivity.Middle, zero.Distance);
+        AddDistance(distance, "Far (1.2 m)", DistanceSensitivity.Far, zero.Distance);
+        menu.Items.Add(distance);
+
+        var lockDelay = new ToolStripMenuItem($"Auto-lock timer: {zero.LockDelay}");
+        AddLockDelay(lockDelay, LockDelay.Fast, zero.LockDelay);
+        AddLockDelay(lockDelay, LockDelay.Medium, zero.LockDelay);
+        AddLockDelay(lockDelay, LockDelay.Slow, zero.LockDelay);
+        menu.Items.Add(lockDelay);
         menu.Items.Add(new ToolStripSeparator());
         var modes = new ToolStripMenuItem($"Power mode: {ModeName(power.Mode)}") { Enabled = power.Supported };
         AddMode(modes, "Intelligent Cooling", LenovoPowerMode.IntelligentCooling, power);
@@ -86,6 +99,28 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         var item = new ToolStripMenuItem(text) { Checked = state.Mode == mode, Enabled = enabled };
         item.Click += (_, _) => ChangeMode(mode);
+        parent.DropDownItems.Add(item);
+    }
+
+    private void AddDistance(ToolStripMenuItem parent, string text, DistanceSensitivity value, DistanceSensitivity current)
+    {
+        var item = new ToolStripMenuItem(text) { Checked = value == current };
+        item.Click += (_, _) =>
+        {
+            try { ZeroTouchControl.RequestDistance(value); }
+            catch (Exception ex) { ShowError(ex); }
+        };
+        parent.DropDownItems.Add(item);
+    }
+
+    private void AddLockDelay(ToolStripMenuItem parent, LockDelay value, LockDelay current)
+    {
+        var item = new ToolStripMenuItem(value.ToString()) { Checked = value == current };
+        item.Click += (_, _) =>
+        {
+            try { ZeroTouchControl.RequestLockDelay(value); }
+            catch (Exception ex) { ShowError(ex); }
+        };
         parent.DropDownItems.Add(item);
     }
 
@@ -119,6 +154,14 @@ internal sealed class TrayApplicationContext : ApplicationContext
         LenovoPowerMode.Performance => "Performance",
         LenovoPowerMode.Geek => "Geek",
         _ => "Unknown"
+    };
+
+    private static string DistanceName(DistanceSensitivity distance) => distance switch
+    {
+        DistanceSensitivity.Near => "Near (0.42 m)",
+        DistanceSensitivity.Middle => "Middle (0.6 m)",
+        DistanceSensitivity.Far => "Far (1.2 m)",
+        _ => "Automatic"
     };
 
     private static Icon CreateStatusIcon(Color color)

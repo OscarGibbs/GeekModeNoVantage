@@ -15,7 +15,17 @@ internal static class Program
 
         if (args.Length == 3 && args[0].Equals("--set-zero-touch", StringComparison.OrdinalIgnoreCase))
         {
-            ZeroTouchControl.Apply(args[1], args[2] == "1");
+            ZeroTouchControl.ApplyFeature(args[1], args[2] == "1");
+            return;
+        }
+        if (args.Length == 2 && args[0].Equals("--set-distance", StringComparison.OrdinalIgnoreCase))
+        {
+            ZeroTouchControl.ApplyDistance(args[1]);
+            return;
+        }
+        if (args.Length == 2 && args[0].Equals("--set-lock-delay", StringComparison.OrdinalIgnoreCase))
+        {
+            ZeroTouchControl.ApplyLockDelay(args[1]);
             return;
         }
 
