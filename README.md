@@ -11,10 +11,10 @@ A small, local-only Windows tray utility created specifically for the Lenovo Ide
 
 - Reads and switches Lenovo Intelligent Cooling, Battery Saving, Performance, and Geek modes directly through the installed `EnergyDrv` driver.
 - Checks the charger before enabling Geek Mode.
-- Reads and controls Lenovo's three SmartSense features independently:
+- Reads and controls Lenovo's confirmed SmartSense settings independently:
   - Zero Touch Login
   - Zero Touch Lock
-  - Zero Touch Video Playback
+- Shows Zero Touch Video Playback as unavailable until its true state mapping is decoded; the `Video` registry value is a capability flag, not the user toggle.
 - Shows whether the ToF/SmartSense stack is online.
 - Shows a compact count of running Lenovo services.
 - Uses no network access, analytics, advertising, account, or subscriptions.

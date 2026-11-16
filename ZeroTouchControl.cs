@@ -4,8 +4,8 @@ using System.Security.Principal;
 
 namespace LenovoSlimControl;
 
-internal enum ZeroTouchFeature { Login, Lock, VideoPlayback }
-internal sealed record ZeroTouchState(bool Login, bool Lock, bool VideoPlayback, bool ServiceRunning);
+internal enum ZeroTouchFeature { Login, Lock }
+internal sealed record ZeroTouchState(bool Login, bool Lock, bool ServiceRunning);
 
 internal static class ZeroTouchControl
 {
@@ -15,7 +15,7 @@ internal static class ZeroTouchControl
     {
         using var key = Registry.LocalMachine.OpenSubKey(HpdKey, false);
         return new(ReadBool(key, "Approach"), ReadBool(key, "PresentLeave"),
-            ReadBool(key, "Video"), LenovoState.IsServiceRunning("SmartSense"));
+            LenovoState.IsServiceRunning("SmartSense"));
     }
 
     internal static void Request(ZeroTouchFeature feature, bool enabled)
@@ -24,7 +24,6 @@ internal static class ZeroTouchControl
         {
             ZeroTouchFeature.Login => "Approach",
             ZeroTouchFeature.Lock => "PresentLeave",
-            ZeroTouchFeature.VideoPlayback => "Video",
             _ => throw new ArgumentOutOfRangeException(nameof(feature))
         };
         if (IsAdministrator()) { Apply(name, enabled); return; }
@@ -43,7 +42,7 @@ internal static class ZeroTouchControl
 
     internal static void Apply(string valueName, bool enabled)
     {
-        if (valueName is not ("Approach" or "PresentLeave" or "Video")) Environment.Exit(2);
+        if (valueName is not ("Approach" or "PresentLeave")) Environment.Exit(2);
         using (var key = Registry.LocalMachine.OpenSubKey(HpdKey, writable: true))
         {
             if (key is null) Environment.Exit(3);

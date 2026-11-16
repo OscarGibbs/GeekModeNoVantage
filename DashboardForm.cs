@@ -45,7 +45,7 @@ internal sealed class DashboardForm : Form
     {
         tof.Text = z.ServiceRunning ? "● ToF sensor online" : "○ ToF sensor offline";
         tof.ForeColor = z.ServiceRunning ? Color.FromArgb(30, 150, 80) : Color.Gray;
-        zeroTouch.Text = $"Login {(z.Login ? "On" : "Off")}  •  Lock {(z.Lock ? "On" : "Off")}  •  Video {(z.VideoPlayback ? "On" : "Off")}";
+        zeroTouch.Text = $"Login {(z.Login ? "On" : "Off")}  •  Lock {(z.Lock ? "On" : "Off")}  •  Video mapping pending";
         power.Text = $"Power mode: {p.Mode}" + (p.GeekSupported ? "  •  Geek available" : string.Empty);
         services.Text = $"Lenovo services: {s.Running} of {s.Total} running";
     }

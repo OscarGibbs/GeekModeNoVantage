@@ -59,7 +59,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add(new ToolStripSeparator());
         AddZeroTouch("Zero Touch Login", ZeroTouchFeature.Login, zero.Login);
         AddZeroTouch("Zero Touch Lock", ZeroTouchFeature.Lock, zero.Lock);
-        AddZeroTouch("Zero Touch Video Playback", ZeroTouchFeature.VideoPlayback, zero.VideoPlayback);
+        menu.Items.Add(new ToolStripMenuItem("Zero Touch Video Playback: mapping pending") { Enabled = false });
         menu.Items.Add(new ToolStripSeparator());
         var modes = new ToolStripMenuItem($"Power mode: {ModeName(power.Mode)}") { Enabled = power.Supported };
         AddMode(modes, "Intelligent Cooling", LenovoPowerMode.IntelligentCooling, power);
