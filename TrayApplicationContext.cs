@@ -10,6 +10,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly DashboardForm dashboard;
     private readonly System.Windows.Forms.Timer timer = new() { Interval = 3000 };
     private readonly PowerModeWatcher powerWatcher;
+    private bool menuOpen;
+    private bool? lastTofOnline;
 
     internal TrayApplicationContext()
     {
@@ -17,14 +19,22 @@ internal sealed class TrayApplicationContext : ApplicationContext
         powerWatcher = new PowerModeWatcher(() =>
         {
             PowerModeControl.NotifyExternalModeChange();
-            if (dashboard.IsHandleCreated)
+            if (!menuOpen && dashboard.IsHandleCreated)
                 dashboard.BeginInvoke(async () => { await Task.Delay(300); RefreshState(); });
         });
         tray.ContextMenuStrip = menu;
         tray.Visible = true;
         tray.DoubleClick += (_, _) => ShowDashboard();
-        menu.Opening += (_, _) => RefreshState();
-        timer.Tick += (_, _) => RefreshState();
+        menu.Opening += (_, _) => menuOpen = true;
+        menu.Closed += (_, _) =>
+        {
+            menuOpen = false;
+            RefreshState();
+        };
+        timer.Tick += (_, _) =>
+        {
+            if (!menuOpen) RefreshState();
+        };
         timer.Start();
         powerWatcher.Start();
         RefreshState();
@@ -36,9 +46,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
         var power = PowerModeControl.Read();
         var services = LenovoState.CountServices();
         tray.Text = $"Geek Mode No Vantage — ToF {(zero.ServiceRunning ? "online" : "offline")} — {ModeName(power.Mode)}";
-        var oldIcon = tray.Icon;
-        tray.Icon = CreateStatusIcon(zero.ServiceRunning ? Color.FromArgb(48, 190, 105) : Color.Gray);
-        oldIcon?.Dispose();
+        if (lastTofOnline != zero.ServiceRunning)
+        {
+            var oldIcon = tray.Icon;
+            tray.Icon = CreateStatusIcon(zero.ServiceRunning ? Color.FromArgb(48, 190, 105) : Color.Gray);
+            oldIcon?.Dispose();
+            lastTofOnline = zero.ServiceRunning;
+        }
 
         menu.Items.Clear();
         menu.Items.Add(new ToolStripMenuItem(zero.ServiceRunning ? "● ToF sensor online" : "○ ToF sensor offline") { Enabled = false });
@@ -77,13 +91,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private void ChangeZeroTouch(ZeroTouchFeature feature, bool enabled)
     {
-        try { ZeroTouchControl.Request(feature, enabled); RefreshState(); }
+        try { ZeroTouchControl.Request(feature, enabled); }
         catch (Exception ex) { ShowError(ex); }
     }
 
     private void ChangeMode(LenovoPowerMode mode)
     {
-        try { PowerModeControl.Set(mode); RefreshState(); }
+        try { PowerModeControl.Set(mode); }
         catch (Exception ex) { ShowError(ex); }
     }
 
