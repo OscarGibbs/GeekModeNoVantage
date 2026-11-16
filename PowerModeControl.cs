@@ -29,12 +29,13 @@ internal static class PowerModeControl
         catch { return new(LenovoPowerMode.Unknown, false, false, 0, 0); }
     }
 
-    internal static void NotifyExternalModeChange()
+    internal static bool NotifyExternalModeChange()
     {
         // Lenovo raises LENOVO_DISPATCHER_EVENT for our own service-control
         // command too. Do not mistake that acknowledgement for an Fn+Q press.
-        if (Environment.TickCount64 <= Interlocked.Read(ref ignoreDispatcherEventsUntil)) return;
+        if (Environment.TickCount64 <= Interlocked.Read(ref ignoreDispatcherEventsUntil)) return false;
         geekSetByUs = false;
+        return true;
     }
 
     internal static void Set(LenovoPowerMode mode)

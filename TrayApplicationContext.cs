@@ -10,17 +10,25 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly DashboardForm dashboard;
     private readonly System.Windows.Forms.Timer timer = new() { Interval = 3000 };
     private readonly PowerModeWatcher powerWatcher;
+    private readonly Control dispatcher = new();
     private bool menuOpen;
     private bool? lastTofOnline;
+    private ZeroTouchState? cachedZero;
+    private int zeroRefreshRunning;
+    private DateTime lastZeroRefresh;
+    private LenovoPowerMode? requestedPowerMode;
+    private DateTime requestedPowerModeUntil;
+    private bool exiting;
 
     internal TrayApplicationContext()
     {
         dashboard = new DashboardForm(RefreshState);
+        dispatcher.CreateControl();
         powerWatcher = new PowerModeWatcher(() =>
         {
-            PowerModeControl.NotifyExternalModeChange();
-            if (!menuOpen && dashboard.IsHandleCreated)
-                dashboard.BeginInvoke(async () => { await Task.Delay(300); RefreshState(); });
+            if (PowerModeControl.NotifyExternalModeChange()) requestedPowerMode = null;
+            if (!menuOpen && !exiting)
+                dispatcher.BeginInvoke(async () => { await Task.Delay(300); if (!exiting) RefreshState(); });
         });
         tray.ContextMenuStrip = menu;
         tray.Visible = true;
@@ -42,9 +50,27 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private void RefreshState()
     {
-        var zero = ZeroTouchControl.Read();
+        // The RPC backend is a separate process and must never hold up the tray
+        // menu. Only the first snapshot is synchronous; later ones refresh in
+        // the background while the last confirmed state remains visible.
+        if (cachedZero is null)
+        {
+            cachedZero = ZeroTouchControl.Read();
+            lastZeroRefresh = DateTime.UtcNow;
+        }
+        var zero = cachedZero;
         var power = PowerModeControl.Read();
+        if (requestedPowerMode is { } requested && DateTime.UtcNow < requestedPowerModeUntil)
+            power = power with { Mode = requested };
+        else
+            requestedPowerMode = null;
         var services = LenovoState.CountServices();
+        RenderState(zero, power, services);
+        QueueZeroTouchRefresh();
+    }
+
+    private void RenderState(ZeroTouchState zero, PowerModeState power, (int Running, int Total) services)
+    {
         tray.Text = $"Geek Mode No Vantage — ToF {(zero.ServiceRunning ? "online" : "offline")} — {ModeName(power.Mode)}";
         if (lastTofOnline != zero.ServiceRunning)
         {
@@ -99,6 +125,32 @@ internal sealed class TrayApplicationContext : ApplicationContext
         dashboard.UpdateState(zero, power, services);
     }
 
+    private void QueueZeroTouchRefresh()
+    {
+        if (DateTime.UtcNow - lastZeroRefresh < TimeSpan.FromSeconds(3) ||
+            Interlocked.Exchange(ref zeroRefreshRunning, 1) != 0) return;
+        lastZeroRefresh = DateTime.UtcNow;
+        _ = Task.Run(() =>
+        {
+            ZeroTouchState? state = null;
+            try { state = ZeroTouchControl.Read(); }
+            finally
+            {
+                Interlocked.Exchange(ref zeroRefreshRunning, 0);
+                if (state is not null && !exiting)
+                {
+                    try { dispatcher.BeginInvoke(() =>
+                    {
+                        cachedZero = state;
+                        if (!menuOpen)
+                            RenderState(state, PowerModeControl.Read(), LenovoState.CountServices());
+                    }); }
+                    catch (InvalidOperationException) when (exiting) { }
+                }
+            }
+        });
+    }
+
     private void AddZeroTouch(string text, ZeroTouchFeature feature, bool value)
     {
         var item = new ToolStripMenuItem(text) { Checked = value, CheckOnClick = false };
@@ -110,7 +162,14 @@ internal sealed class TrayApplicationContext : ApplicationContext
         PowerModeState state, bool enabled = true)
     {
         var item = new ToolStripMenuItem(text) { Checked = state.Mode == mode, Enabled = enabled };
-        item.Click += (_, _) => ChangeMode(mode);
+        item.Click += (_, _) =>
+        {
+            if (!ChangeMode(mode)) return;
+            foreach (ToolStripMenuItem sibling in parent.DropDownItems.OfType<ToolStripMenuItem>())
+                sibling.Checked = ReferenceEquals(sibling, item);
+            parent.Text = $"Power mode: {ModeName(mode)}";
+            tray.Text = $"Geek Mode No Vantage — {ModeName(mode)}";
+        };
         parent.DropDownItems.Add(item);
     }
 
@@ -142,10 +201,20 @@ internal sealed class TrayApplicationContext : ApplicationContext
         catch (Exception ex) { ShowError(ex); }
     }
 
-    private void ChangeMode(LenovoPowerMode mode)
+    private bool ChangeMode(LenovoPowerMode mode)
     {
-        try { PowerModeControl.Set(mode); }
-        catch (Exception ex) { ShowError(ex); }
+        try
+        {
+            PowerModeControl.Set(mode);
+            requestedPowerMode = mode;
+            requestedPowerModeUntil = DateTime.UtcNow.AddSeconds(2);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex);
+            return false;
+        }
     }
 
     private void ShowDashboard()
@@ -209,11 +278,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     protected override void ExitThreadCore()
     {
+        exiting = true;
         timer.Stop();
         powerWatcher.Dispose();
         tray.Visible = false;
         tray.Icon?.Dispose();
         tray.Dispose();
+        dispatcher.Dispose();
         dashboard.Dispose();
         base.ExitThreadCore();
     }
