@@ -16,6 +16,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private ZeroTouchState? cachedZero;
     private int zeroRefreshRunning;
     private DateTime lastZeroRefresh;
+    private int zeroMutationGeneration;
     private LenovoPowerMode? requestedPowerMode;
     private DateTime requestedPowerModeUntil;
     private bool exiting;
@@ -130,6 +131,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         if (DateTime.UtcNow - lastZeroRefresh < TimeSpan.FromSeconds(3) ||
             Interlocked.Exchange(ref zeroRefreshRunning, 1) != 0) return;
         lastZeroRefresh = DateTime.UtcNow;
+        var generation = Volatile.Read(ref zeroMutationGeneration);
         _ = Task.Run(() =>
         {
             ZeroTouchState? state = null;
@@ -137,7 +139,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             finally
             {
                 Interlocked.Exchange(ref zeroRefreshRunning, 0);
-                if (state is not null && !exiting)
+                if (state is not null && !exiting && generation == Volatile.Read(ref zeroMutationGeneration))
                 {
                     try { dispatcher.BeginInvoke(() =>
                     {
@@ -176,10 +178,25 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private void AddDistance(ToolStripMenuItem parent, string text, DistanceSensitivity value, DistanceSensitivity current)
     {
         var item = new ToolStripMenuItem(text) { Checked = value == current };
-        item.Click += (_, _) =>
+        item.Click += async (_, _) =>
         {
-            try { ZeroTouchControl.RequestDistance(value); }
-            catch (Exception ex) { ShowError(ex); }
+            var previous = cachedZero;
+            Interlocked.Increment(ref zeroMutationGeneration);
+            if (cachedZero is not null) cachedZero = cachedZero with { Distance = value };
+            foreach (ToolStripMenuItem sibling in parent.DropDownItems.OfType<ToolStripMenuItem>())
+                sibling.Checked = ReferenceEquals(sibling, item);
+            parent.Text = $"Distance sensitivity: {DistanceName(value)}";
+            try
+            {
+                await Task.Run(() => ZeroTouchControl.RequestDistance(value));
+                ScheduleZeroTouchVerification();
+            }
+            catch (Exception ex)
+            {
+                cachedZero = previous;
+                ShowError(ex);
+                RefreshState();
+            }
         };
         parent.DropDownItems.Add(item);
     }
@@ -187,18 +204,72 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private void AddLockDelay(ToolStripMenuItem parent, LockDelay value, LockDelay current)
     {
         var item = new ToolStripMenuItem(value.ToString()) { Checked = value == current };
-        item.Click += (_, _) =>
+        item.Click += async (_, _) =>
         {
-            try { ZeroTouchControl.RequestLockDelay(value); }
-            catch (Exception ex) { ShowError(ex); }
+            var previous = cachedZero;
+            Interlocked.Increment(ref zeroMutationGeneration);
+            if (cachedZero is not null) cachedZero = cachedZero with { LockDelay = value };
+            foreach (ToolStripMenuItem sibling in parent.DropDownItems.OfType<ToolStripMenuItem>())
+                sibling.Checked = ReferenceEquals(sibling, item);
+            parent.Text = $"Auto-lock timer: {value}";
+            try
+            {
+                await Task.Run(() => ZeroTouchControl.RequestLockDelay(value));
+                ScheduleZeroTouchVerification();
+            }
+            catch (Exception ex)
+            {
+                cachedZero = previous;
+                ShowError(ex);
+                RefreshState();
+            }
         };
         parent.DropDownItems.Add(item);
     }
 
-    private void ChangeZeroTouch(ZeroTouchFeature feature, bool enabled)
+    private async void ChangeZeroTouch(ZeroTouchFeature feature, bool enabled)
     {
-        try { ZeroTouchControl.Request(feature, enabled); }
-        catch (Exception ex) { ShowError(ex); }
+        var previous = cachedZero;
+        Interlocked.Increment(ref zeroMutationGeneration);
+        if (cachedZero is not null)
+        {
+            cachedZero = feature switch
+            {
+                ZeroTouchFeature.Login => cachedZero with { Login = enabled },
+                ZeroTouchFeature.Lock => cachedZero with { Lock = enabled },
+                ZeroTouchFeature.VideoPlayback => cachedZero with { VideoPlayback = enabled },
+                ZeroTouchFeature.CameraAssist => cachedZero with { CameraAssist = enabled },
+                ZeroTouchFeature.LeaveAutoAdjust => cachedZero with { LeaveAutoAdjust = enabled },
+                _ => cachedZero
+            };
+        }
+        try
+        {
+            await Task.Run(() => ZeroTouchControl.Request(feature, enabled));
+            ScheduleZeroTouchVerification();
+        }
+        catch (Exception ex)
+        {
+            cachedZero = previous;
+            ShowError(ex);
+            RefreshState();
+        }
+    }
+
+    private void ScheduleZeroTouchVerification()
+    {
+        lastZeroRefresh = default;
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(250);
+            for (var attempt = 0; attempt < 20 && Volatile.Read(ref zeroRefreshRunning) != 0; attempt++)
+                await Task.Delay(100);
+            if (!exiting)
+            {
+                try { dispatcher.BeginInvoke((Action)QueueZeroTouchRefresh); }
+                catch (InvalidOperationException) when (exiting) { }
+            }
+        });
     }
 
     private bool ChangeMode(LenovoPowerMode mode)
