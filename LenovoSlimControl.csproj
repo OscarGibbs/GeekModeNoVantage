@@ -12,6 +12,9 @@
     <PackageReference Include="System.Management" Version="8.0.0" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Remove="experiments\**\*.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <Content Include="third_party\vantage-cli\vantage.exe">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

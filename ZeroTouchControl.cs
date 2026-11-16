@@ -27,6 +27,7 @@ internal sealed record ZeroTouchState(
 internal static class ZeroTouchControl
 {
     private const string HpdKey = @"SYSTEM\CurrentControlSet\Services\SmartSense\Parameters\HPD";
+    private const string AwareKey = HpdKey + @"\AWARE";
     internal static ZeroTouchState Read()
     {
         using var key = Registry.LocalMachine.OpenSubKey(HpdKey, false);
@@ -73,41 +74,61 @@ internal static class ZeroTouchControl
 
     internal static void ApplyFeature(string featureName, bool enabled)
     {
+        using var key = OpenWritable(HpdKey);
         switch (featureName)
         {
             case nameof(ZeroTouchFeature.Login):
-                VantageCliBackend.SetWakeOnApproach(enabled);
+                key.SetValue("Approach", enabled ? 1 : 0, RegistryValueKind.DWord);
                 break;
             case nameof(ZeroTouchFeature.Lock):
-                VantageCliBackend.SetLockOnLeave(enabled);
+                key.SetValue("PresentLeave", enabled ? 1 : 0, RegistryValueKind.DWord);
                 break;
             case nameof(ZeroTouchFeature.VideoPlayback):
-                VantageCliBackend.SetPauseVideo(enabled);
+                key.SetValue("Video", enabled ? 2 : 1, RegistryValueKind.DWord);
+                using (var aware = OpenWritable(AwareKey))
+                    aware.SetValue("Status", enabled ? 2 : 0, RegistryValueKind.DWord);
                 break;
             case nameof(ZeroTouchFeature.CameraAssist):
-                VantageCliBackend.SetCameraAssist(enabled);
+                key.SetValue("CameraDetect", enabled ? 2 : 1, RegistryValueKind.DWord);
                 break;
             case nameof(ZeroTouchFeature.LeaveAutoAdjust):
-                VantageCliBackend.SetLeaveAutoAdjust(enabled);
+                key.SetValue("LeaveAutoAdjust", enabled ? 2 : 1, RegistryValueKind.DWord);
                 break;
             default:
                 Environment.Exit(2);
                 break;
         }
+        RestartSmartSense();
     }
 
     internal static void ApplyDistance(string distanceName)
     {
         if (!Enum.TryParse<DistanceSensitivity>(distanceName, out var distance)) Environment.Exit(2);
-        var state = Read();
-        VantageCliBackend.SetApproachDistance(distance, state.Login);
+        using var key = OpenWritable(HpdKey);
+        if (distance == DistanceSensitivity.Automatic)
+        {
+            key.SetValue("AutoAdjust", 2, RegistryValueKind.DWord);
+        }
+        else
+        {
+            key.SetValue("AutoAdjust", 1, RegistryValueKind.DWord);
+            key.SetValue("ApproachDistance", distance switch
+            {
+                DistanceSensitivity.Near => 1,
+                DistanceSensitivity.Middle => 2,
+                DistanceSensitivity.Far => 3,
+                _ => 2
+            }, RegistryValueKind.DWord);
+        }
+        RestartSmartSense();
     }
 
     internal static void ApplyLockDelay(string value)
     {
         if (!int.TryParse(value, out var delay) || delay is < 1 or > 3) Environment.Exit(2);
-        var state = Read();
-        VantageCliBackend.SetLockDelay((LockDelay)delay, state.Lock);
+        using var key = OpenWritable(HpdKey);
+        key.SetValue("LeaveWait", delay, RegistryValueKind.DWord);
+        RestartSmartSense();
     }
 
     private static void RunElevated(string command, string value, string extra)
@@ -137,5 +158,22 @@ internal static class ZeroTouchControl
     {
         using var identity = WindowsIdentity.GetCurrent();
         return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
+    }
+    private static RegistryKey OpenWritable(string path) =>
+        Registry.LocalMachine.OpenSubKey(path, writable: true) ??
+        throw new InvalidOperationException($"SmartSense registry key not found: {path}");
+    private static void RestartSmartSense()
+    {
+        RunSc("stop SmartSense");
+        RunSc("start SmartSense");
+    }
+    private static void RunSc(string arguments)
+    {
+        using var process = Process.Start(new ProcessStartInfo
+        {
+            FileName = Path.Combine(Environment.SystemDirectory, "sc.exe"), Arguments = arguments,
+            UseShellExecute = false, CreateNoWindow = true
+        });
+        process?.WaitForExit(10_000);
     }
 }

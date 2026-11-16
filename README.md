@@ -11,8 +11,9 @@ A small, local-only Windows tray utility created specifically for the Lenovo Ide
 
 - Reads and switches Lenovo Intelligent Cooling, Battery Saving, Performance, and Geek modes directly through the installed `EnergyDrv` driver.
 - Checks the charger before enabling Geek Mode.
-- Reads and controls Lenovo's confirmed SmartSense settings through Lenovo's local
-  `HumanPresenceDetectionEndpoint` RPC, with registry readback/fallback:
+- Reads Lenovo SmartSense state through its local `HumanPresenceDetectionEndpoint`
+  RPC. On the tested IdeaPad, Lenovo's own RPC setters return Win32 error 87, so
+  writes use the confirmed SmartSense registry contract and restart the service:
   - Zero Touch Login
   - Zero Touch Lock
   - Zero Touch Video Playback
