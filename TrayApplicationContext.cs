@@ -35,7 +35,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         var zero = ZeroTouchControl.Read();
         var power = PowerModeControl.Read();
         var services = LenovoState.CountServices();
-        tray.Text = $"Lenovo Helper — ToF {(zero.ServiceRunning ? "online" : "offline")} — {ModeName(power.Mode)}";
+        tray.Text = $"Geek Mode No Vantage — ToF {(zero.ServiceRunning ? "online" : "offline")} — {ModeName(power.Mode)}";
         var oldIcon = tray.Icon;
         tray.Icon = CreateStatusIcon(zero.ServiceRunning ? Color.FromArgb(48, 190, 105) : Color.Gray);
         oldIcon?.Dispose();
@@ -96,7 +96,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     }
 
     private static void ShowError(Exception ex) =>
-        MessageBox.Show(ex.Message, "Lenovo Helper", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        MessageBox.Show(ex.Message, "Geek Mode No Vantage", MessageBoxButtons.OK, MessageBoxIcon.Error);
 
     private static string ModeName(LenovoPowerMode mode) => mode switch
     {

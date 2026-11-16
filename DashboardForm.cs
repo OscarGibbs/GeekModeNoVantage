@@ -13,13 +13,13 @@ internal sealed class DashboardForm : Form
     internal DashboardForm(Action refresh)
     {
         this.refresh = refresh;
-        Text = "Lenovo Helper";
+        Text = "Geek Mode No Vantage";
         ClientSize = new Size(430, 260);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
 
-        var title = new Label { Text = "Lenovo Helper", Font = new Font("Segoe UI", 18, FontStyle.Bold), AutoSize = true };
+        var title = new Label { Text = "Geek Mode No Vantage", Font = new Font("Segoe UI", 18, FontStyle.Bold), AutoSize = true };
         var subtitle = new Label
         {
             Text = "IdeaPad Pro 5 14IAH10 • local controls only",

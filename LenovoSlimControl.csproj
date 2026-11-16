@@ -5,7 +5,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AssemblyName>LenovoSlimControl</AssemblyName>
+    <AssemblyName>GeekModeNoVantage</AssemblyName>
     <RootNamespace>LenovoSlimControl</RootNamespace>
   </PropertyGroup>
   <ItemGroup>

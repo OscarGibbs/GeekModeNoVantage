@@ -1,4 +1,4 @@
-# Lenovo Helper
+# GeekModeNoVantage
 
 > [!CAUTION]
 > **Personal, vibe-coded prototype.** This application was built for one person and has only been tested on a **Lenovo IdeaPad Pro 5 14IAH10, machine type 83JK, BIOS QLCN36WW**. It directly sends commands to Lenovo's power-management driver and changes undocumented SmartSense settings. Do not assume it supports another model, firmware version, or Lenovo software stack. Incorrect low-level power controls can cause instability, unexpected thermal behaviour, or data loss. Review the source, keep Lenovo's original drivers installed, and use it entirely at your own risk.
