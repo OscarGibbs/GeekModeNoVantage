@@ -1,5 +1,6 @@
 using Microsoft.Win32.SafeHandles;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace LenovoSlimControl;
@@ -40,16 +41,25 @@ internal static class PowerModeControl
         if (mode == LenovoPowerMode.Geek && !state.GeekSupported)
             throw new InvalidOperationException("Lenovo EnergyDrv did not advertise Geek Mode.");
 
+        // Modern IdeaPads expose the same Lenovo Dispatcher messages Vantage
+        // uses. This keeps firmware, Fn+Q and Vantage's displayed state in sync.
+        if (TrySetViaDispatcher(mode))
+        {
+            geekSetByUs = mode == LenovoPowerMode.Geek;
+            Thread.Sleep(250);
+            return;
+        }
+
         using var handle = OpenEnergyDriver();
         if (state.GeekSupported || geekSetByUs) Send(handle, 0x000F100B);
         geekSetByUs = false;
 
-        foreach (var function in new uint[] { 15, 8, 7, 6, 1, 11 })
+        foreach (var function in new uint[] { 15, 8, 7, 6, 5, 11 })
             Send(handle, BuildSet(function, 0xF, false));
         if (mode == LenovoPowerMode.IntelligentCooling) Send(handle, 0x000001FF);
         Send(handle, mode switch
         {
-            LenovoPowerMode.IntelligentCooling => BuildSet(1, 0xF, true),
+            LenovoPowerMode.IntelligentCooling => BuildSet(5, 0xF, true),
             LenovoPowerMode.BatterySaving => BuildSet(11, 3, true),
             LenovoPowerMode.Performance or LenovoPowerMode.Geek => BuildSet(11, 2, true),
             _ => throw new ArgumentOutOfRangeException(nameof(mode))
@@ -60,6 +70,33 @@ internal static class PowerModeControl
             Send(handle, 0x001F100B);
             geekSetByUs = true;
         }
+    }
+
+    private static bool TrySetViaDispatcher(LenovoPowerMode mode)
+    {
+        var control = mode switch
+        {
+            LenovoPowerMode.IntelligentCooling => 163,
+            LenovoPowerMode.BatterySaving => 164,
+            LenovoPowerMode.Performance => 165,
+            LenovoPowerMode.Geek => 172,
+            _ => 0
+        };
+        if (control == 0) return false;
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = Path.Combine(Environment.SystemDirectory, "sc.exe"),
+                Arguments = $"control LenovoProcessManagement {control}",
+                UseShellExecute = false,
+                CreateNoWindow = true
+            });
+            if (process is null) return false;
+            process.WaitForExit(5000);
+            return process.ExitCode == 0;
+        }
+        catch { return false; }
     }
 
     private static LenovoPowerMode Decode(uint raw)

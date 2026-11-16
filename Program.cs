@@ -12,6 +12,12 @@ internal static class Program
                 $"supported={state.Supported}\ngeekSupported={state.GeekSupported}\nmode={state.Mode}\nraw=0x{state.RawMode:X8}\nextended=0x{state.Capabilities:X8}\n");
             return;
         }
+        if (args.Length == 2 && args[0].Equals("--set-power", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!Enum.TryParse<LenovoPowerMode>(args[1], true, out var mode)) Environment.Exit(2);
+            PowerModeControl.Set(mode);
+            return;
+        }
 
         if (args.Length == 3 && args[0].Equals("--set-zero-touch", StringComparison.OrdinalIgnoreCase))
         {
