@@ -13,6 +13,7 @@ internal static class PowerModeControl
     private const uint IoctlSmartPower = 0x8310213C;
     private const uint GeekCapabilityMask = 0x00020001;
     private static bool geekSetByUs;
+    private static long ignoreDispatcherEventsUntil;
 
     internal static PowerModeState Read()
     {
@@ -28,7 +29,13 @@ internal static class PowerModeControl
         catch { return new(LenovoPowerMode.Unknown, false, false, 0, 0); }
     }
 
-    internal static void NotifyExternalModeChange() => geekSetByUs = false;
+    internal static void NotifyExternalModeChange()
+    {
+        // Lenovo raises LENOVO_DISPATCHER_EVENT for our own service-control
+        // command too. Do not mistake that acknowledgement for an Fn+Q press.
+        if (Environment.TickCount64 <= Interlocked.Read(ref ignoreDispatcherEventsUntil)) return;
+        geekSetByUs = false;
+    }
 
     internal static void Set(LenovoPowerMode mode)
     {
@@ -46,6 +53,7 @@ internal static class PowerModeControl
         if (TrySetViaDispatcher(mode))
         {
             geekSetByUs = mode == LenovoPowerMode.Geek;
+            Interlocked.Exchange(ref ignoreDispatcherEventsUntil, Environment.TickCount64 + 1500);
             Thread.Sleep(250);
             return;
         }
