@@ -61,6 +61,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
         AddZeroTouch("Zero Touch Lock", ZeroTouchFeature.Lock, zero.Lock);
         AddZeroTouch("Zero Touch Video Playback", ZeroTouchFeature.VideoPlayback, zero.VideoPlayback);
 
+        if (zero.CameraAssist is not null && (zero.Advertised & 0x40) != 0)
+            AddZeroTouch("Camera-assisted lock", ZeroTouchFeature.CameraAssist, zero.CameraAssist.Value);
+        if (zero.LeaveAutoAdjust is not null && (zero.Advertised & 0x100) != 0)
+            AddZeroTouch("Automatic leave distance", ZeroTouchFeature.LeaveAutoAdjust, zero.LeaveAutoAdjust.Value);
+
         var distance = new ToolStripMenuItem($"Distance sensitivity: {DistanceName(zero.Distance)}");
         AddDistance(distance, "Automatic", DistanceSensitivity.Automatic, zero.Distance);
         AddDistance(distance, "Near (0.42 m)", DistanceSensitivity.Near, zero.Distance);
@@ -74,6 +79,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
         AddLockDelay(lockDelay, LockDelay.Slow, zero.LockDelay);
         menu.Items.Add(lockDelay);
         menu.Items.Add(new ToolStripSeparator());
+        var sensorName = SensorName(zero.SensorType);
+        var rpcText = zero.RpcAvailable
+            ? $"SmartSense RPC: connected • {sensorName}"
+            : "SmartSense RPC: unavailable (registry read only)";
+        var rpcItem = new ToolStripMenuItem(rpcText) { Enabled = false };
+        rpcItem.ToolTipText = zero.RpcError ?? $"Interface v{zero.InterfaceVersion?.ToString() ?? "?"}, capabilities 0x{zero.Advertised:X}";
+        menu.Items.Add(rpcItem);
         var modes = new ToolStripMenuItem($"Power mode: {ModeName(power.Mode)}") { Enabled = power.Supported };
         AddMode(modes, "Intelligent Cooling", LenovoPowerMode.IntelligentCooling, power);
         AddMode(modes, "Battery Saving", LenovoPowerMode.BatterySaving, power);
@@ -162,6 +174,15 @@ internal sealed class TrayApplicationContext : ApplicationContext
         DistanceSensitivity.Middle => "Middle (0.6 m)",
         DistanceSensitivity.Far => "Far (1.2 m)",
         _ => "Automatic"
+    };
+
+    private static string SensorName(int? sensorType) => sensorType switch
+    {
+        1 => "VL53L1 ToF",
+        2 => "VL53L5 ToF",
+        4 => "CVDSP",
+        null => "unknown sensor",
+        _ => $"sensor type {sensorType}"
     };
 
     private static Icon CreateStatusIcon(Color color)

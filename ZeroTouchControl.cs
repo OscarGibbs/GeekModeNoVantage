@@ -4,7 +4,7 @@ using System.Security.Principal;
 
 namespace LenovoSlimControl;
 
-internal enum ZeroTouchFeature { Login, Lock, VideoPlayback }
+internal enum ZeroTouchFeature { Login, Lock, VideoPlayback, CameraAssist, LeaveAutoAdjust }
 internal enum DistanceSensitivity { Automatic, Near, Middle, Far }
 internal enum LockDelay { Fast = 1, Medium = 2, Slow = 3 }
 
@@ -15,13 +15,18 @@ internal sealed record ZeroTouchState(
     bool ServiceRunning,
     DistanceSensitivity Distance,
     LockDelay LockDelay,
-    int CalibratedDistance);
+    int CalibratedDistance,
+    bool RpcAvailable,
+    string? RpcError,
+    ulong Advertised,
+    bool? CameraAssist,
+    bool? LeaveAutoAdjust,
+    int? SensorType,
+    int? InterfaceVersion);
 
 internal static class ZeroTouchControl
 {
     private const string HpdKey = @"SYSTEM\CurrentControlSet\Services\SmartSense\Parameters\HPD";
-    private const string AwareKey = HpdKey + @"\AWARE";
-
     internal static ZeroTouchState Read()
     {
         using var key = Registry.LocalMachine.OpenSubKey(HpdKey, false);
@@ -39,14 +44,22 @@ internal static class ZeroTouchControl
             3 => LockDelay.Slow,
             _ => LockDelay.Medium
         };
+        var rpcAvailable = VantageCliBackend.TryRead(out var rpc, out var rpcError);
         return new(
-            ReadBool(key, "Approach"),
-            ReadBool(key, "PresentLeave"),
-            ReadInt(key, "Video", 1) == 2,
+            rpc?.WakeOnApproach ?? ReadBool(key, "Approach"),
+            rpc?.LockOnLeave ?? ReadBool(key, "PresentLeave"),
+            rpc?.PauseVideo ?? ReadInt(key, "Video", 1) == 2,
             LenovoState.IsServiceRunning("SmartSense"),
-            distance,
+            rpc?.ApproachAutoAdjust == true ? DistanceSensitivity.Automatic : distance,
             delay,
-            ReadInt(key, "AdjustDistance", 0));
+            ReadInt(key, "AdjustDistance", 0),
+            rpcAvailable,
+            rpcError,
+            rpc?.Advertised ?? unchecked((uint)ReadInt(key, "Capability", 0)),
+            rpc?.CameraAssist ?? (ReadInt(key, "CameraDetect", 1) == 2),
+            rpc?.LeaveAutoAdjust ?? (ReadInt(key, "LeaveAutoAdjust", 1) == 2),
+            rpc?.SensorType ?? ReadNullableInt(key, "SensorType"),
+            rpc?.InterfaceVersion ?? ReadNullableInt(key, "Version"));
     }
 
     internal static void Request(ZeroTouchFeature feature, bool enabled) =>
@@ -60,55 +73,41 @@ internal static class ZeroTouchControl
 
     internal static void ApplyFeature(string featureName, bool enabled)
     {
-        using var key = OpenWritable(HpdKey);
         switch (featureName)
         {
             case nameof(ZeroTouchFeature.Login):
-                key.SetValue("Approach", enabled ? 1 : 0, RegistryValueKind.DWord);
+                VantageCliBackend.SetWakeOnApproach(enabled);
                 break;
             case nameof(ZeroTouchFeature.Lock):
-                key.SetValue("PresentLeave", enabled ? 1 : 0, RegistryValueKind.DWord);
+                VantageCliBackend.SetLockOnLeave(enabled);
                 break;
             case nameof(ZeroTouchFeature.VideoPlayback):
-                key.SetValue("Video", enabled ? 2 : 1, RegistryValueKind.DWord);
-                using (var aware = OpenWritable(AwareKey))
-                    aware.SetValue("Status", enabled ? 2 : 0, RegistryValueKind.DWord);
+                VantageCliBackend.SetPauseVideo(enabled);
+                break;
+            case nameof(ZeroTouchFeature.CameraAssist):
+                VantageCliBackend.SetCameraAssist(enabled);
+                break;
+            case nameof(ZeroTouchFeature.LeaveAutoAdjust):
+                VantageCliBackend.SetLeaveAutoAdjust(enabled);
                 break;
             default:
                 Environment.Exit(2);
                 break;
         }
-        RestartSmartSense();
     }
 
     internal static void ApplyDistance(string distanceName)
     {
         if (!Enum.TryParse<DistanceSensitivity>(distanceName, out var distance)) Environment.Exit(2);
-        using var key = OpenWritable(HpdKey);
-        if (distance == DistanceSensitivity.Automatic)
-        {
-            key.SetValue("AutoAdjust", 2, RegistryValueKind.DWord);
-        }
-        else
-        {
-            key.SetValue("AutoAdjust", 1, RegistryValueKind.DWord);
-            key.SetValue("ApproachDistance", distance switch
-            {
-                DistanceSensitivity.Near => 1,
-                DistanceSensitivity.Middle => 2,
-                DistanceSensitivity.Far => 3,
-                _ => 2
-            }, RegistryValueKind.DWord);
-        }
-        RestartSmartSense();
+        var state = Read();
+        VantageCliBackend.SetApproachDistance(distance, state.Login);
     }
 
     internal static void ApplyLockDelay(string value)
     {
         if (!int.TryParse(value, out var delay) || delay is < 1 or > 3) Environment.Exit(2);
-        using var key = OpenWritable(HpdKey);
-        key.SetValue("LeaveWait", delay, RegistryValueKind.DWord);
-        RestartSmartSense();
+        var state = Read();
+        VantageCliBackend.SetLockDelay((LockDelay)delay, state.Lock);
     }
 
     private static void RunElevated(string command, string value, string extra)
@@ -131,28 +130,12 @@ internal static class ZeroTouchControl
             throw new InvalidOperationException("The SmartSense setting could not be changed.");
     }
 
-    private static RegistryKey OpenWritable(string path) =>
-        Registry.LocalMachine.OpenSubKey(path, writable: true) ??
-        throw new InvalidOperationException($"SmartSense registry key not found: {path}");
     private static bool ReadBool(RegistryKey? key, string name) => ReadInt(key, name, 0) != 0;
     private static int ReadInt(RegistryKey? key, string name, int fallback) => key?.GetValue(name) is int value ? value : fallback;
+    private static int? ReadNullableInt(RegistryKey? key, string name) => key?.GetValue(name) is int value ? value : null;
     private static bool IsAdministrator()
     {
         using var identity = WindowsIdentity.GetCurrent();
         return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
-    }
-    private static void RestartSmartSense()
-    {
-        RunSc("stop SmartSense");
-        RunSc("start SmartSense");
-    }
-    private static void RunSc(string arguments)
-    {
-        using var process = Process.Start(new ProcessStartInfo
-        {
-            FileName = Path.Combine(Environment.SystemDirectory, "sc.exe"), Arguments = arguments,
-            UseShellExecute = false, CreateNoWindow = true
-        });
-        process?.WaitForExit(10_000);
     }
 }

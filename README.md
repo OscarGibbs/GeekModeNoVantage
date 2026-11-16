@@ -11,12 +11,16 @@ A small, local-only Windows tray utility created specifically for the Lenovo Ide
 
 - Reads and switches Lenovo Intelligent Cooling, Battery Saving, Performance, and Geek modes directly through the installed `EnergyDrv` driver.
 - Checks the charger before enabling Geek Mode.
-- Reads and controls Lenovo's confirmed SmartSense settings independently:
+- Reads and controls Lenovo's confirmed SmartSense settings through Lenovo's local
+  `HumanPresenceDetectionEndpoint` RPC, with registry readback/fallback:
   - Zero Touch Login
   - Zero Touch Lock
   - Zero Touch Video Playback
   - Automatic or Near (0.42 m), Middle (0.6 m), and Far (1.2 m) distance sensitivity
   - Fast, Medium, and Slow automatic-lock delay
+  - Camera-assisted lock when advertised by the installed SmartSense stack
+  - Automatic leave-distance adjustment when advertised
+- Reports the HPD interface version, capability mask, and sensor type (for example VL53L1).
 - Shows whether the ToF/SmartSense stack is online.
 - Shows a compact count of running Lenovo services.
 - Uses no network access, analytics, advertising, account, or subscriptions.
@@ -26,6 +30,10 @@ A small, local-only Windows tray utility created specifically for the Lenovo Ide
 SmartSense's live HPD feed is proprietary. Until it is decoded, the tray indicator says whether the ToF stack is online; it does not claim a person is detected.
 
 The signed Lenovo EnergyDrv, ACPI, SmartSense, ToF/camera, and hotkey drivers remain installed. Lenovo Vantage is not involved in normal control once compatibility testing is complete.
+
+SmartSense RPC is provided by the separately distributed AGPL-3.0
+[`vantage-cli`](https://github.com/cyjin-yl/vantage-cli) backend. See
+`THIRD_PARTY_NOTICES.md` and the bundled license for attribution and source.
 
 The DYTC/EnergyDrv protocol implementation was validated against the GPL-licensed [Lenovo Legion Toolkit](https://github.com/LenovoLegionToolkit-Team/LenovoLegionToolkit) implementation.
 
