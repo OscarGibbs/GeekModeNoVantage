@@ -41,10 +41,20 @@ internal sealed class DashboardForm : Form
         Shown += (_, _) => refresh();
     }
 
-    internal void UpdateState(ZeroTouchState z, PowerModeState p, (int Running, int Total) s)
+    internal void UpdateState(ZeroTouchState z, PowerModeState p, (int Running, int Total) s,
+        PresenceBridgeState presence)
     {
-        tof.Text = z.ServiceRunning ? "● ToF sensor online" : "○ ToF sensor offline";
-        tof.ForeColor = z.ServiceRunning ? Color.FromArgb(30, 150, 80) : Color.Gray;
+        tof.Text = !z.ServiceRunning ? "○ ToF sensor offline" : presence.Online ? presence.Decision switch
+        {
+            PresenceDecision.Present => "● Presence detected",
+            PresenceDecision.Absent => "○ Presence not detected",
+            _ => "◐ Presence uncertain"
+        } : "● ToF online • live indicator offline";
+        tof.ForeColor = presence.Online && presence.Decision == PresenceDecision.Present
+            ? Color.FromArgb(30, 150, 80)
+            : presence.Online && presence.Decision == PresenceDecision.Absent
+                ? Color.FromArgb(210, 120, 30)
+                : Color.Gray;
         zeroTouch.Text = $"Login {(z.Login ? "On" : "Off")}  •  Lock {(z.Lock ? "On" : "Off")}  •  Video {(z.VideoPlayback ? "On" : "Off")}\n" +
                          $"Distance {z.Distance}  •  Lock timer {z.LockDelay}\n" +
                          $"Control: {(z.RpcAvailable ? $"SmartSense RPC v{z.InterfaceVersion ?? 0}" : "registry read-only fallback")}";

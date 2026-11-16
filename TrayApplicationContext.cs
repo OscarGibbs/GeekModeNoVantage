@@ -12,7 +12,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly PowerModeWatcher powerWatcher;
     private readonly Control dispatcher = new();
     private bool menuOpen;
-    private bool? lastTofOnline;
+    private string? lastIconState;
     private ZeroTouchState? cachedZero;
     private int zeroRefreshRunning;
     private DateTime lastZeroRefresh;
@@ -66,22 +66,44 @@ internal sealed class TrayApplicationContext : ApplicationContext
         else
             requestedPowerMode = null;
         var services = LenovoState.CountServices();
-        RenderState(zero, power, services);
+        RenderState(zero, power, services, PresenceBridgeControl.Read());
         QueueZeroTouchRefresh();
     }
 
-    private void RenderState(ZeroTouchState zero, PowerModeState power, (int Running, int Total) services)
+    private void RenderState(ZeroTouchState zero, PowerModeState power, (int Running, int Total) services,
+        PresenceBridgeState presence)
     {
-        tray.Text = $"Geek Mode No Vantage — ToF {(zero.ServiceRunning ? "online" : "offline")} — {ModeName(power.Mode)}";
-        if (lastTofOnline != zero.ServiceRunning)
+        var presenceText = presence.Online ? presence.Decision switch
+        {
+            PresenceDecision.Present => "present",
+            PresenceDecision.Absent => "absent",
+            _ => "uncertain"
+        } : "indicator offline";
+        tray.Text = $"Geek Mode No Vantage — {presenceText} — {ModeName(power.Mode)}";
+        var iconState = !zero.ServiceRunning ? "offline" : presence.Online ? presence.Decision.ToString() : "sensor";
+        if (lastIconState != iconState)
         {
             var oldIcon = tray.Icon;
-            tray.Icon = CreateStatusIcon(zero.ServiceRunning ? Color.FromArgb(48, 190, 105) : Color.Gray);
+            var color = !zero.ServiceRunning ? Color.Gray : presence.Decision switch
+            {
+                PresenceDecision.Present when presence.Online => Color.FromArgb(48, 190, 105),
+                PresenceDecision.Absent when presence.Online => Color.FromArgb(235, 145, 45),
+                _ => Color.FromArgb(80, 130, 190)
+            };
+            tray.Icon = CreateStatusIcon(color);
             oldIcon?.Dispose();
-            lastTofOnline = zero.ServiceRunning;
+            lastIconState = iconState;
         }
 
         menu.Items.Clear();
+        menu.Items.Add(new ToolStripMenuItem(presence.Online
+            ? presence.Decision switch
+            {
+                PresenceDecision.Present => "● Presence detected",
+                PresenceDecision.Absent => "○ Presence not detected",
+                _ => "◐ Presence uncertain"
+            }
+            : "○ Live presence indicator offline") { Enabled = false });
         menu.Items.Add(new ToolStripMenuItem(zero.ServiceRunning ? "● ToF sensor online" : "○ ToF sensor offline") { Enabled = false });
         menu.Items.Add(new ToolStripSeparator());
         AddZeroTouch("Zero Touch Login", ZeroTouchFeature.Login, zero.Login);
@@ -123,7 +145,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add($"Lenovo services: {services.Running}/{services.Total} running", null, (_, _) => ShowDashboard());
         menu.Items.Add("Open", null, (_, _) => ShowDashboard());
         menu.Items.Add("Exit", null, (_, _) => ExitThread());
-        dashboard.UpdateState(zero, power, services);
+        dashboard.UpdateState(zero, power, services, presence);
     }
 
     private void QueueZeroTouchRefresh()
@@ -145,7 +167,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
                     {
                         cachedZero = state;
                         if (!menuOpen)
-                            RenderState(state, PowerModeControl.Read(), LenovoState.CountServices());
+                            RenderState(state, PowerModeControl.Read(), LenovoState.CountServices(), PresenceBridgeControl.Read());
                     }); }
                     catch (InvalidOperationException) when (exiting) { }
                 }

@@ -23,6 +23,8 @@ A small, local-only Windows tray utility created specifically for the Lenovo Ide
   - Automatic leave-distance adjustment when advertised
 - Reports the HPD interface version, capability mask, and sensor type (for example VL53L1).
 - Shows whether the ToF/SmartSense stack is online.
+- With the optional read-only Presence Bridge service installed, shows Lenovo's
+  live `Present`, `Absent`, or `Unknown` lock decision in the tray icon.
 - Shows a compact count of running Lenovo services.
 - Uses no network access, analytics, advertising, account, or subscriptions.
 
@@ -54,6 +56,15 @@ dotnet build .\LenovoSlimControl.csproj -c Release
 ```
 
 The executable is produced under `bin\Release\net8.0-windows`.
+
+Build and install the optional protected-event bridge from an elevated PowerShell:
+
+```powershell
+dotnet build .\PresenceBridge\PresenceBridge.csproj -c Release
+.\Install-PresenceBridge.ps1
+```
+
+Remove it with `Uninstall-PresenceBridge.ps1` from an elevated PowerShell.
 
 ## Status
 

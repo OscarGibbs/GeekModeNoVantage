@@ -72,10 +72,14 @@ path and may conflict with Lenovo's active sensor ownership.
 The protected-event watcher currently requires elevation. It must not reset or
 wait destructively on Lenovo's events; it uses `NtQueryEvent` only.
 
-## Safe next step
+## Read-only production bridge
 
-To expose the decision in the normal tray app without running the whole UI as
-administrator, add a tiny privileged read-only bridge installed with explicit
-user approval. The bridge would query the two existing events and expose only a
-small enum (`Present`, `Absent`, `Unknown`) over a user-readable local pipe. A
-persistent service or elevated scheduled task should not be installed implicitly.
+`PresenceBridge` implements the privileged boundary with explicit installation.
+It runs as LocalSystem, requests only `EVENT_QUERY_STATE`, polls through
+`NtQueryEvent`, and publishes a small enum (`Present`, `Absent`, `Unknown`) plus a
+one-second heartbeat under `HKLM\SOFTWARE\GeekModeNoVantage\Presence`.
+
+There is no network listener, named-pipe command surface or Lenovo write path.
+The normal tray process treats a heartbeat older than five seconds as offline.
+Installation and removal are handled by `Install-PresenceBridge.ps1` and
+`Uninstall-PresenceBridge.ps1`; neither is run implicitly by the application.

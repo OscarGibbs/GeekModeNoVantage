@@ -13,6 +13,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="experiments\**\*.cs" />
+    <Compile Remove="PresenceBridge\**\*.cs" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="third_party\vantage-cli\vantage.exe">
